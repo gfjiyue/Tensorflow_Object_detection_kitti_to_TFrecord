@@ -1,0 +1,99 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep 18 08:59:56 2018
+
+@author: fieldphenomics
+"""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+#import matplotlib.pyplot as plt
+import io
+import os
+import sys
+sys.path.append("C:\\tensorflow\\models\\research\\")# Directory of tensorflow model
+sys.path.append("C:\\tensorflow\\models\\research\\object_detection\\utils")# Directory of tensorflow model
+import PIL.Image
+import tensorflow as tf
+
+from object_detection.utils import dataset_util
+from object_detection.utils import label_map_util
+################################################################################
+flags = tf.app.flags
+flags.DEFINE_string('data_dir', 'D:\\dataset_sample', 'Root directory to raw dataset.') # ROOT DIRECTORY
+flags.DEFINE_string('label_dir', 'train\\label', '(Relative) path to labels directory.')
+flags.DEFINE_string('image_dir', 'train\\img', '(Relative) path to images directory.')
+flags.DEFINE_string('label_map_path', 'tomato_label_map.pbtxt', 'Path to label map proto')
+flags.DEFINE_string('output_path', 'train.record', '(Relative) path to output TFRecord')
+FLAGS = flags.FLAGS
+################################################################################
+################################################################################
+def data_to_tf(img_full_path, label_full_path, label_map_dict):
+  with tf.gfile.GFile(img_full_path, 'rb') as fid:
+    encoded_jpg = fid.read()
+  encoded_jpg_io = io.BytesIO(encoded_jpg)
+  image = PIL.Image.open(encoded_jpg_io)
+  # plt.imshow(image)
+  
+  if image.format != 'JPEG':
+    raise ValueError('Image format not JPEG')
+  
+  width = image.size[0]
+  height = image.size[1]
+
+  xmin = []
+  ymin = []
+  xmax = []
+  ymax = []
+  classes = []
+  classes_text = []
+
+  with open(label_full_path, 'r') as f:    
+    data = f.readlines()  
+    for line in data:
+      vline = line.split()        
+      xmin.append(float(vline[4]) / width)
+      ymin.append(float(vline[5]) / height)
+      xmax.append(float(vline[6]) / width)
+      ymax.append(float(vline[7]) / height)
+      classes_text.append(b'tomato')
+      classes.append(label_map_dict['tomato'])
+
+  record = tf.train.Example(features=tf.train.Features(feature={
+      'image/height': dataset_util.int64_feature(height),
+      'image/width': dataset_util.int64_feature(width),
+      'image/filename': dataset_util.bytes_feature(
+          img_example.encode('utf8')),
+      'image/source_id': dataset_util.bytes_feature(
+          img_example.encode('utf8')),
+      'image/encoded': dataset_util.bytes_feature(encoded_jpg),
+      'image/format': dataset_util.bytes_feature('jpeg'.encode('utf8')),
+      'image/object/bbox/xmin': dataset_util.float_list_feature(xmin),
+      'image/object/bbox/xmax': dataset_util.float_list_feature(xmax),
+      'image/object/bbox/ymin': dataset_util.float_list_feature(ymin),
+      'image/object/bbox/ymax': dataset_util.float_list_feature(ymax),
+      'image/object/class/text': dataset_util.bytes_list_feature(classes_text),
+      'image/object/class/label': dataset_util.int64_list_feature(classes),
+  }))
+  return record
+################################################################################
+data_dir = FLAGS.data_dir
+image_dir = os.path.join(data_dir, FLAGS.image_dir)
+label_dir = os.path.join(data_dir,FLAGS.label_dir)
+image_list = os.listdir(image_dir)
+label_list = os.listdir(label_dir)
+
+writer = tf.python_io.TFRecordWriter(os.path.join(data_dir, FLAGS.output_path))  
+for idx, img_example in enumerate(image_list):
+  lab_example = label_list[idx]
+  img_full_path = os.path.join(image_dir, img_example)
+  label_full_path = os.path.join(label_dir,lab_example)
+  label_map_dict = label_map_util.get_label_map_dict(os.path.join(data_dir, FLAGS.label_map_path))
+  record = data_to_tf(img_full_path, label_full_path, label_map_dict)   
+  writer.write(record.SerializeToString())
+  print(img_example)
+  print(lab_example)
+writer.close()
+
